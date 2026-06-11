@@ -41,7 +41,7 @@ function App() {
   }, [dispatch]);
 
   return (
-    <Router>
+    <Router basename={import.meta.env.BASE_URL}>
       <Toaster 
         position="top-right"
         toastOptions={{
