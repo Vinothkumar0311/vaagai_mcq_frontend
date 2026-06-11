@@ -110,7 +110,13 @@ export const MCQTest = () => {
               duration: 10000,
               icon: '🚨'
             });
-            submitExamAnswers(true);
+            // Use a flag on window to prevent duplicate submissions from this effect
+            if (!window._mcqSecuritySubmitting) {
+              window._mcqSecuritySubmitting = true;
+              submitExamAnswers(true).finally(() => {
+                window._mcqSecuritySubmitting = false;
+              });
+            }
             return 0;
           }
           return prev - 1;
@@ -307,6 +313,10 @@ export const MCQTest = () => {
       toast.error('Failed to submit exam: ' + err.message);
       isSubmittingRef.current = false;
       setSubmitting(false);
+      // If this was a forced security submit, navigate away regardless of error
+      if (forceZeroScore) {
+        navigate('/examiner/tests');
+      }
     }
   };
 
@@ -521,8 +531,8 @@ export const MCQTest = () => {
                 </div>
               </div>
 
-              {/* Question Text */}
-              <h2 className={`${questionSizeClass} font-bold text-slate-900 dark:text-white leading-relaxed font-sans`}>
+              {/* Question Text - preserve newlines from Excel */}
+              <h2 className={`${questionSizeClass} font-bold text-slate-900 dark:text-white leading-relaxed font-sans`} style={{ whiteSpace: 'pre-wrap' }}>
                 {activeQuestion.question}
               </h2>
 
