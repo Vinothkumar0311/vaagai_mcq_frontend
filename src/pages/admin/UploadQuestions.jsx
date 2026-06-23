@@ -1,12 +1,101 @@
 import React, { useState, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { adminApi } from '../../services/api';
 import {
   FileSpreadsheet, ChevronLeft, UploadCloud, CheckCircle,
   AlertTriangle, FileArchive, ImageIcon, X, PlusCircle,
-  Pencil, Info, Trash2
+  Pencil, Info, Trash2, Eye
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
+
+// ─── Extract Embedded Drawings from XLSX ──────────────────────────────────────
+async function extractEmbeddedImagesFromXlsx(fileBuffer) {
+  const imageMap = {};
+  try {
+    const zip = await JSZip.loadAsync(fileBuffer);
+    const sheetRelEntry = zip.file("xl/worksheets/_rels/sheet1.xml.rels");
+    if (!sheetRelEntry) return imageMap;
+
+    const sheetRelXml = await sheetRelEntry.async("string");
+    const drawingMatch =
+      sheetRelXml.match(/Type="[^"]*relationships\/drawing"\s+Target="([^"]*)"/i) ||
+      sheetRelXml.match(/Target="([^"]*)"\s+Type="[^"]*relationships\/drawing"/i);
+
+    let drawingPath = "xl/drawings/drawing1.xml";
+    if (drawingMatch) {
+      const target = drawingMatch[1];
+      const basePath = "xl/worksheets";
+      const parts = (basePath + "/" + target).split("/");
+      const resolvedParts = [];
+      for (const part of parts) {
+        if (part === "..") resolvedParts.pop();
+        else resolvedParts.push(part);
+      }
+      drawingPath = resolvedParts.join("/");
+    }
+
+    const drawingEntry = zip.file(drawingPath);
+    if (!drawingEntry) return imageMap;
+
+    const drawingRelPath = drawingPath.replace("xl/drawings/", "xl/drawings/_rels/") + ".rels";
+    const drawingRelEntry = zip.file(drawingRelPath);
+    if (!drawingRelEntry) return imageMap;
+
+    const drawingRelXml = await drawingRelEntry.async("string");
+    const rels = {};
+    const relRegex = /<Relationship\s+Id="([^"]*)"\s+Type="[^"]*"\s+Target="([^"]*)"/gi;
+    let match;
+    while ((match = relRegex.exec(drawingRelXml)) !== null) {
+      rels[match[1]] = match[2];
+    }
+    const relRegexAlt = /<Relationship\s+Target="([^"]*)"\s+Type="[^"]*"\s+Id="([^"]*)"/gi;
+    while ((match = relRegexAlt.exec(drawingRelXml)) !== null) {
+      rels[match[2]] = match[1];
+    }
+
+    const drawingXml = await drawingEntry.async("string");
+    const anchorRegex = /<(xdr:twoCellAnchor|xdr:oneCellAnchor)[^>]*>([\s\S]*?)<\/(xdr:twoCellAnchor|xdr:oneCellAnchor)>/g;
+    let anchorMatch;
+    while ((anchorMatch = anchorRegex.exec(drawingXml)) !== null) {
+      const anchorContent = anchorMatch[2];
+      const rowMatch = anchorContent.match(/<xdr:row>(\d+)<\/xdr:row>/);
+      const blipMatch = anchorContent.match(/<a:blip[^>]*r:embed="([^"]*)"/);
+
+      if (rowMatch && blipMatch) {
+        const rowIndex = parseInt(rowMatch[1], 10);
+        const rId = blipMatch[1];
+        const targetPath = rels[rId];
+        if (targetPath) {
+          const basePath = "xl/drawings";
+          const parts = (basePath + "/" + targetPath).split("/");
+          const resolvedParts = [];
+          for (const part of parts) {
+            if (part === "..") resolvedParts.pop();
+            else resolvedParts.push(part);
+          }
+          const mediaPath = resolvedParts.join("/");
+          const mediaEntry = zip.file(mediaPath);
+          if (mediaEntry) {
+            const blob = await mediaEntry.async("blob");
+            const basename = mediaPath.substring(mediaPath.lastIndexOf("/") + 1);
+            imageMap[rowIndex] = {
+              filename: basename,
+              blob: blob,
+              objectUrl: URL.createObjectURL(blob),
+            };
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error extracting embedded images client-side:", error);
+  }
+  return imageMap;
+}
+
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 const TABS = [
@@ -76,6 +165,152 @@ function QuestionCard({ q, index, onDelete }) {
   );
 }
 
+// ─── Preview Modal (rendered via portal to avoid stacking context issues) ──────
+function PreviewModal({ rows, imageFiles = [], onConfirm, onCancel, uploading }) {
+  // Build a map: filename (lowercase) -> object URL for preview
+  const imgUrlMap = React.useMemo(() => {
+    const map = {};
+    imageFiles.forEach((f) => {
+      map[f.name.toLowerCase()] = URL.createObjectURL(f);
+    });
+    return map;
+  }, [imageFiles]);
+
+  const getImgSrc = (imgVal) => {
+    if (!imgVal) return null;
+    if (imgVal.startsWith("http") || imgVal.startsWith("//")) return imgVal;
+    return imgUrlMap[imgVal.toLowerCase()] || null;
+  };
+
+  const OPT_LABELS = ["A", "B", "C", "D"];
+  const OPT_KEYS   = ["optionA", "optionB", "optionC", "optionD"];
+
+  const modal = (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", background: "rgba(0,0,0,0.70)", backdropFilter: "blur(6px)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div
+        className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col"
+        style={{ width: "95vw", maxWidth: 1100, height: "95vh" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800" style={{ flexShrink: 0 }}>
+          <div>
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+              <Eye size={20} className="text-primary-600" /> Question Preview
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              <strong>{rows.length}</strong> question(s) found — review before uploading
+            </p>
+          </div>
+          <button onClick={onCancel} className="text-slate-400 hover:text-red-500 transition-colors p-1"><X size={20} /></button>
+        </div>
+
+        {/* Question Cards */}
+        <div style={{ overflowY: "auto", flex: 1, padding: "1.25rem 1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {rows.map((r, i) => {
+            const imgSrc = r.embeddedImgUrl || getImgSrc(r.image);
+            const isImageOnly = !r.question && r.image;
+            return (
+              <div key={i}
+                className="dark:bg-slate-800/40 dark:border-slate-700"
+                style={{ border: "1px solid #e2e8f0", borderRadius: 16, padding: "1rem 1.25rem", background: i % 2 === 0 ? "#ffffff" : "#f8fafc" }}
+              >
+                {/* Card header: index + class + image-only badge */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                  <span style={{ width: 26, height: 26, borderRadius: "50%", background: "#ede9fe", color: "#6d28d9", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                  {r.class && (
+                    <span style={{ padding: "3px 10px", background: "#dbeafe", color: "#1e40af", borderRadius: 999, fontWeight: 700, fontSize: 12, border: "1px solid #bfdbfe" }}>
+                      Class: {r.class}
+                    </span>
+                  )}
+                  {isImageOnly && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", background: "#ede9fe", color: "#6d28d9", borderRadius: 999, fontWeight: 600, fontSize: 12 }}>
+                      <ImageIcon size={12} /> Image Question
+                    </span>
+                  )}
+                </div>
+
+                {/* Card body: text+options on left, image on right */}
+                <div style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start" }}>
+                  {/* Left */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {r.question && (
+                      <p className="text-slate-800 dark:text-slate-100"
+                        style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                        {r.question}
+                      </p>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 14px" }}>
+                      {OPT_KEYS.map((k, idx) => {
+                        const label = OPT_LABELS[idx];
+                        const isCorrect = r.correctAnswer === label;
+                        return (
+                          <div key={k} style={{
+                            display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 12px", borderRadius: 10,
+                            background: isCorrect ? "#d1fae5" : "#f1f5f9",
+                            border: isCorrect ? "1.5px solid #6ee7b7" : "1px solid #e2e8f0",
+                          }}>
+                            <span style={{ width: 22, height: 22, borderRadius: "50%", background: isCorrect ? "#10b981" : "#94a3b8", color: "#fff", fontWeight: 700, fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              {label}
+                            </span>
+                            <span style={{ fontSize: 13, color: isCorrect ? "#065f46" : "#334155", fontWeight: isCorrect ? 600 : 400, lineHeight: 1.5, wordBreak: "break-word" }}
+                              className="dark:text-slate-200">
+                              {r[k] || <span style={{ color: "#cbd5e1" }}>—</span>}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Right: image */}
+                  {r.image && (
+                    <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, minWidth: 150, maxWidth: 180 }}>
+                      {imgSrc ? (
+                        <img src={imgSrc} alt="question"
+                          style={{ width: "100%", maxHeight: 180, objectFit: "contain", borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc", padding: 4 }}
+                          onError={(e) => { e.target.style.display = "none"; }}
+                        />
+                      ) : (
+                        <div style={{ width: "100%", height: 100, background: "#f1f5f9", borderRadius: 10, border: "2px dashed #c7d2fe", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                          <ImageIcon size={28} style={{ color: "#a5b4fc" }} />
+                          <span style={{ fontSize: 10, color: "#94a3b8", textAlign: "center" }}>Upload image files to preview</span>
+                        </div>
+                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "#ede9fe", borderRadius: 8, width: "100%", overflow: "hidden" }}>
+                        <ImageIcon size={11} style={{ color: "#7c3aed", flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: "#6d28d9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.image}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-800" style={{ flexShrink: 0 }}>
+          <button onClick={onCancel} disabled={uploading}
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all disabled:opacity-50">
+            ← Back
+          </button>
+          <button onClick={onConfirm} disabled={uploading}
+            className="flex items-center gap-2 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-semibold shadow-lg shadow-primary-600/25 transition-all disabled:opacity-50">
+            {uploading
+              ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Uploading…</>
+              : <><UploadCloud size={15} /> Confirm &amp; Upload {rows.length} Question(s)</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+  return ReactDOM.createPortal(modal, document.body);
+}
+
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export const UploadQuestions = () => {
   const { id: testId } = useParams();
@@ -91,6 +326,8 @@ export const UploadQuestions = () => {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadStats, setUploadStats] = useState(null);
+  const [previewRows, setPreviewRows] = useState([]);
+  const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef(null);
   const imgInputRef  = useRef(null);
 
@@ -127,14 +364,77 @@ export const UploadQuestions = () => {
 
   const switchMode = (m) => { setMode(m); setFile(null); setImageFiles([]); setUploadStats(null); };
 
+  // Parse Excel client-side and open preview (skip preview for ZIP)
   const handleExcelSubmit = async (e) => {
     e.preventDefault();
     if (!file) { toast.error('Please select a file first.'); return; }
+
+    if (mode === 'zip') {
+      // ZIP: no client-side parse, go straight to upload
+      await doUpload();
+      return;
+    }
+
+    try {
+      const data = await file.arrayBuffer();
+
+      // Extract embedded drawing images client-side
+      const embeddedImagesMap = await extractEmbeddedImagesFromXlsx(data);
+
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      // raw:false returns formatted cell values (prevents Excel serial numbers for class/date cells)
+      const json = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+
+      const rows = json
+        .map((row, idx) => {
+          const embeddedImg = embeddedImagesMap[idx + 1];
+          const questionText = String(row['Question'] || row['question'] || '').trim();
+          const optionA = String(row['Option A'] || row['optionA'] || row['OptionA'] || '').trim();
+          const optionB = String(row['Option B'] || row['optionB'] || row['OptionB'] || '').trim();
+          const optionC = String(row['Option C'] || row['optionC'] || row['OptionC'] || '').trim();
+          const optionD = String(row['Option D'] || row['optionD'] || row['OptionD'] || '').trim();
+          const correctAnswer = String(row['Correct Answer'] || row['correctAnswer'] || row['Answer'] || 'A').trim().toUpperCase();
+          const questionClass = String(row['Class'] || row['class'] || row['Grade'] || row['grade'] || row['Standard'] || row['standard'] || '').trim();
+
+          let imageVal = String(row['Image'] || row['image'] || '').trim();
+          let embeddedImgUrl = null;
+
+          if (embeddedImg) {
+            imageVal = imageVal || embeddedImg.filename;
+            embeddedImgUrl = embeddedImg.objectUrl;
+          }
+
+          return {
+            question: questionText,
+            optionA,
+            optionB,
+            optionC,
+            optionD,
+            correctAnswer,
+            class: questionClass,
+            image: imageVal,
+            embeddedImgUrl,
+          };
+        })
+        .filter((r) => r.question !== '' || r.image !== '' || r.embeddedImgUrl);
+
+      if (rows.length === 0) { toast.error('No valid questions found in the file.'); return; }
+      setPreviewRows(rows);
+      setShowPreview(true);
+    } catch (err) {
+      toast.error('Could not read file: ' + err.message);
+    }
+  };
+
+  // Actual upload after confirmation
+  const doUpload = async () => {
     setUploading(true);
     try {
       const imgs = mode === 'separate' ? imageFiles : [];
       const result = await adminApi.uploadQuestions(testId, file, imgs);
       setUploadStats(result);
+      setShowPreview(false);
       toast.success(`Uploaded ${result.count} question(s)!`);
       setTimeout(() => navigate('/admin/tests'), 1800);
     } catch (err) {
@@ -181,6 +481,16 @@ export const UploadQuestions = () => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      {/* Preview Modal — rendered via portal at document.body */}
+      {showPreview && (
+        <PreviewModal
+          rows={previewRows}
+          imageFiles={imageFiles}
+          uploading={uploading}
+          onConfirm={doUpload}
+          onCancel={() => setShowPreview(false)}
+        />
+      )}
       {/* Back */}
       <button onClick={() => navigate('/admin/tests')} className="flex items-center gap-1.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
         <ChevronLeft size={16} /> Back to Tests
@@ -318,7 +628,7 @@ export const UploadQuestions = () => {
               >
                 {uploading
                   ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</>
-                  : <><UploadCloud size={15} /> Upload &amp; Save Questions</>}
+                  : <>{mode === 'zip' ? <><UploadCloud size={15} /> Upload ZIP</> : <><Eye size={15} /> Preview &amp; Upload</>}</>}
               </button>
             </form>
           </div>
