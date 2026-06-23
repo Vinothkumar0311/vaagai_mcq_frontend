@@ -85,6 +85,8 @@ export const Result = () => {
       "You scored well on this assessment. Minor review of concepts will get you to perfection.";
   }
 
+  const questionsList = result.questions || result.Test?.Questions || [];
+
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       {/* Back button */}
@@ -143,16 +145,17 @@ export const Result = () => {
       </div>
 
       {/* Response analysis / Question breakdown */}
-      {result.questions && result.questions.length > 0 && (
+      {questionsList && questionsList.length > 0 && (
         <div className="space-y-6">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white font-sans tracking-tight">
             Grader Response Analysis
           </h3>
 
           <div className="space-y-6">
-            {result.questions.map((q, idx) => {
+            {questionsList.map((q, idx) => {
               // Find matching selected answer
-              const answerObj = result.answers?.find(
+              const answersList = result.answers || result.Answers || [];
+              const answerObj = answersList.find(
                 (a) => a.questionId === q.id,
               );
               const selectedOption = answerObj?.selectedOption || "";

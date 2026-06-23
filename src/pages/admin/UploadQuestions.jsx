@@ -57,12 +57,13 @@ async function extractEmbeddedImagesFromXlsx(fileBuffer) {
     }
 
     const drawingXml = await drawingEntry.async("string");
-    const anchorRegex = /<(xdr:twoCellAnchor|xdr:oneCellAnchor)[^>]*>([\s\S]*?)<\/(xdr:twoCellAnchor|xdr:oneCellAnchor)>/g;
+    const anchorRegex = /<(?:xdr:)?(twoCellAnchor|oneCellAnchor)[^>]*>([\s\S]*?)<\/(?:xdr:)?\1>/gi;
     let anchorMatch;
     while ((anchorMatch = anchorRegex.exec(drawingXml)) !== null) {
       const anchorContent = anchorMatch[2];
-      const rowMatch = anchorContent.match(/<xdr:row>(\d+)<\/xdr:row>/);
-      const blipMatch = anchorContent.match(/<a:blip[^>]*r:embed="([^"]*)"/);
+      const rowMatch = anchorContent.match(/<(?:xdr:)?from>[\s\S]*?<(?:xdr:)?row>(\d+)<\/(?:xdr:)?row>/i) ||
+                       anchorContent.match(/<(?:xdr:)?row>(\d+)<\/(?:xdr:)?row>/i);
+      const blipMatch = anchorContent.match(/embed="([^"]*)"/i) || anchorContent.match(/r:embed="([^"]*)"/i);
 
       if (rowMatch && blipMatch) {
         const rowIndex = parseInt(rowMatch[1], 10);
