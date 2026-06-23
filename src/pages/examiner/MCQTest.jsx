@@ -62,8 +62,17 @@ export const MCQTest = () => {
         });
         setShuffledOptionsMap(optionsMap);
       } catch (err) {
-        toast.error(err.message || "Failed to initialize assessment session.");
-        navigate("/examiner/tests");
+        // If already attempted, backend returns 400 with the existing result object
+        const alreadyAttempted = err.response?.status === 400 && err.response?.data?.result;
+        if (alreadyAttempted) {
+          const existingResult = err.response.data.result;
+          toast.error("You have already completed this assessment.");
+          // Redirect to result page using the existing result's ID or test ID
+          navigate(`/examiner/result/${existingResult.id || id}`);
+        } else {
+          toast.error(err.response?.data?.error || err.message || "Failed to initialize assessment session.");
+          navigate("/examiner/tests");
+        }
       } finally {
         setLoading(false);
       }

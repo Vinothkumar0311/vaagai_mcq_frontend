@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth';
 import { examinerApi } from '../../services/api';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
@@ -8,12 +8,14 @@ import toast from 'react-hot-toast';
 
 export const Tests = () => {
   const { user } = useAuth();
+  const location = useLocation(); // re-fetch whenever we navigate back to this page
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('pending'); // pending or completed
 
   useEffect(() => {
     const fetchTests = async () => {
+      setLoading(true);
       try {
         const data = await examinerApi.getTests(user.email);
         setTests(data);
@@ -26,7 +28,7 @@ export const Tests = () => {
     if (user?.email) {
       fetchTests();
     }
-  }, [user]);
+  }, [user, location.key]); // location.key changes on every navigation
 
   if (loading) {
     return <LoadingSkeleton type="card" count={3} />;
