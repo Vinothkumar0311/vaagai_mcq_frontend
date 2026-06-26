@@ -12,6 +12,7 @@ import ExaminerLayout from './layouts/ExaminerLayout';
 
 // Pages
 import Login from './pages/Login';
+import TakeTest from './pages/TakeTest';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/Dashboard';
@@ -69,6 +70,9 @@ function App() {
       />
       
       <Routes>
+        {/* Public Test Route — no authentication required */}
+        <Route path="/take-test/:id" element={<TakeTest />} />
+
         {/* Split Login Routes */}
         <Route path="/admin/login" element={<Login isAdminRoute={true} />} />
         <Route path="/examiner/login" element={<Login isAdminRoute={false} />} />

@@ -375,3 +375,28 @@ export const examinerApi = {
     return response.data;
   },
 };
+
+// Public API — no authentication required, for shareable test URLs
+export const publicApi = {
+  getTestInfo: async (testId) => {
+    const response = await apiInstance.get(`/api/public/test/${testId}`);
+    return response.data;
+  },
+  getTestQuestions: async (testId, sessionId, name) => {
+    const response = await apiInstance.get(`/api/public/test/${testId}/questions`, {
+      params: { sessionId, name },
+    });
+    return response.data;
+  },
+  submitTest: async (testId, sessionId, name, answers, timeTaken, forceZeroScore = false) => {
+    const response = await apiInstance.post('/api/public/submit', {
+      testId,
+      sessionId,
+      name,
+      answers,
+      timeTaken,
+      forceZeroScore,
+    });
+    return response.data;
+  },
+};

@@ -10,7 +10,9 @@ import {
   Calendar, 
   Clock, 
   HelpCircle,
-  Play
+  Play,
+  Link2,
+  Copy
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../../components/ConfirmModal';
@@ -66,6 +68,22 @@ export const ManageTests = () => {
 
   const handleDeleteClick = (id) => {
     setConfirmDeleteTestId(id);
+  };
+
+  const handleCopyTestUrl = (testId) => {
+    const url = `${window.location.origin}${import.meta.env.BASE_URL}take-test/${testId}`;
+    navigator.clipboard.writeText(url)
+      .then(() => toast.success('Test URL copied to clipboard!'))
+      .catch(() => {
+        // Fallback
+        const input = document.createElement('input');
+        input.value = url;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        toast.success('Test URL copied!');
+      });
   };
 
   const handleConfirmDelete = async () => {
@@ -147,10 +165,35 @@ export const ManageTests = () => {
                   <span className="flex items-center gap-1.5"><Clock size={14} /> {test.duration} Minutes</span>
                   <span className="flex items-center gap-1.5"><HelpCircle size={14} /> {test._count?.questions || 0} Questions</span>
                 </div>
+
+                {/* Shareable test URL */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link2 size={12} className="text-indigo-500 shrink-0" />
+                  <span className="text-xs text-slate-400 dark:text-slate-500">Public URL:</span>
+                  <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400 truncate max-w-xs">
+                    {window.location.origin}{import.meta.env.BASE_URL}take-test/{test.id}
+                  </span>
+                  <button
+                    onClick={() => handleCopyTestUrl(test.id)}
+                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold shrink-0"
+                  >
+                    Copy
+                  </button>
+                </div>
               </div>
 
               {/* Action Buttons */}
               <div className="flex items-center gap-3 w-full md:w-auto shrink-0 justify-end flex-wrap border-t md:border-t-0 border-slate-100 dark:border-slate-800/40 pt-4 md:pt-0">
+                {/* Copy Test URL */}
+                <button
+                  onClick={() => handleCopyTestUrl(test.id)}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold transition-all hover:bg-indigo-50 dark:hover:bg-indigo-950/10"
+                  title="Copy shareable test URL"
+                >
+                  <Link2 size={14} />
+                  Copy Test URL
+                </button>
+
                 {/* Delete Button */}
                 <button
                   onClick={() => handleDeleteClick(test.id)}
