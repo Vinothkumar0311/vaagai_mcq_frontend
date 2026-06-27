@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { mockAuthApi, mockAdminApi, mockExaminerApi } from "./mockData";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "https://vaagai-mcq-backend.onrender.com";
+  import.meta.env.VITE_API_BASE_URL || "https://vaagaimcqbackend-production.up.railway.app";
 const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API === "true";
 
 // Setup axios instance
