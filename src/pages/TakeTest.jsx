@@ -378,6 +378,17 @@ export default function TakeTest() {
                             </span>
                           </div>
                         )}
+
+                        {q.explanation && (
+                          <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-750">
+                            <span className="font-bold block text-slate-900 mb-1">
+                              Explanation:
+                            </span>
+                            <p className="whitespace-pre-line leading-relaxed">
+                              {q.explanation}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
