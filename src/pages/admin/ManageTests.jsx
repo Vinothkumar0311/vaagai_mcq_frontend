@@ -12,7 +12,8 @@ import {
   HelpCircle,
   Play,
   Link2,
-  Copy
+  Copy,
+  Edit
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../../components/ConfirmModal';
@@ -22,6 +23,15 @@ export const ManageTests = () => {
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmDeleteTestId, setConfirmDeleteTestId] = useState(null);
+
+  // Edit Test states
+  const [editingTest, setEditingTest] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editDuration, setEditDuration] = useState('');
+  const [editAllowedClasses, setEditAllowedClasses] = useState([]);
+  const [classesList, setClassesList] = useState([]);
+  const [newClassInput, setNewClassInput] = useState('');
 
   const fetchTests = async () => {
     try {
@@ -34,8 +44,18 @@ export const ManageTests = () => {
     }
   };
 
+  const fetchClasses = async () => {
+    try {
+      const data = await adminApi.getDistinctClasses();
+      setClassesList(data);
+    } catch (err) {
+      console.error('Failed to fetch classes:', err);
+    }
+  };
+
   useEffect(() => {
     fetchTests();
+    fetchClasses();
   }, []);
 
   const handleTogglePublish = async (test) => {
@@ -97,6 +117,57 @@ export const ManageTests = () => {
     } finally {
       setConfirmDeleteTestId(null);
     }
+  };
+
+  const handleEditClick = (test) => {
+    setEditingTest(test);
+    setEditName(test.name || '');
+    
+    if (test.date) {
+      const d = new Date(test.date);
+      const pad = (num) => String(num).padStart(2, '0');
+      const formatted = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      setEditDate(formatted);
+    } else {
+      setEditDate('');
+    }
+    
+    setEditDuration(String(test.duration || '30'));
+    setEditAllowedClasses(Array.isArray(test.allowedClasses) ? test.allowedClasses : []);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editingTest) return;
+    if (!editName || !editDate || !editDuration) {
+      toast.error('Please fill in all required fields.');
+      return;
+    }
+    try {
+      await adminApi.updateTest(editingTest.id, {
+        name: editName,
+        date: editDate,
+        duration: parseInt(editDuration, 10),
+        allowedClasses: editAllowedClasses
+      });
+      toast.success('Test updated successfully!');
+      setEditingTest(null);
+      fetchTests();
+    } catch (err) {
+      toast.error(err.message || 'Failed to update test container.');
+    }
+  };
+
+  const handleAddNewClass = () => {
+    const trimmed = newClassInput.trim();
+    if (!trimmed) return;
+    if (!classesList.includes(trimmed)) {
+      setClassesList(prev => [...prev, trimmed].sort());
+    }
+    if (!editAllowedClasses.includes(trimmed)) {
+      setEditAllowedClasses(prev => [...prev, trimmed]);
+    }
+    setNewClassInput('');
   };
 
   if (loading) {
@@ -180,10 +251,32 @@ export const ManageTests = () => {
                     Copy
                   </button>
                 </div>
+
+                {/* Allowed classes list */}
+                {test.allowedClasses && test.allowedClasses.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                    <span className="text-xs font-semibold text-slate-450 dark:text-slate-500">Allowed Classes:</span>
+                    {test.allowedClasses.map(c => (
+                      <span key={c} className="text-xs px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-650 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30 rounded-md font-semibold">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
               <div className="flex items-center gap-3 w-full md:w-auto shrink-0 justify-end flex-wrap border-t md:border-t-0 border-slate-100 dark:border-slate-800/40 pt-4 md:pt-0">
+                {/* Edit Button */}
+                <button
+                  onClick={() => handleEditClick(test)}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 text-indigo-650 dark:text-indigo-400 rounded-xl text-xs font-bold transition-all hover:bg-slate-50 dark:hover:bg-slate-850/50"
+                  title="Configure test details and allowed classes"
+                >
+                  <Edit size={14} />
+                  Edit
+                </button>
+
                 {/* Copy Test URL */}
                 <button
                   onClick={() => handleCopyTestUrl(test.id)}
@@ -219,6 +312,131 @@ export const ManageTests = () => {
         confirmText="Delete Test"
         type="danger"
       />
+
+      {/* Edit Test Modal */}
+      {editingTest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-left">
+            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">Edit Examination</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 mb-6">Modify details and class restrictions for container {editingTest.id}.</p>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Test Name / Title
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="mt-1 block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-600/45 text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Scheduled Date & Time
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="mt-1 block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-600/45 text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Duration (Minutes)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={editDuration}
+                    onChange={(e) => setEditDuration(e.target.value)}
+                    className="mt-1 block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-600/45 text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Allowed Classes (Optional)
+                </label>
+                
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newClassInput}
+                    onChange={(e) => setNewClassInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddNewClass();
+                      }
+                    }}
+                    placeholder="Add custom class"
+                    className="flex-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary-600/45 text-slate-800 dark:text-slate-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNewClass}
+                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-250 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-800 transition-all"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {classesList.map((className) => {
+                    const isSelected = editAllowedClasses.includes(className);
+                    return (
+                      <button
+                        type="button"
+                        key={className}
+                        onClick={() => {
+                          setEditAllowedClasses(prev =>
+                            isSelected
+                              ? prev.filter(c => c !== className)
+                              : [...prev, className]
+                          );
+                        }}
+                        className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all duration-200 active:scale-95 ${
+                          isSelected
+                            ? 'bg-indigo-600 border-indigo-650 text-white shadow-md shadow-indigo-600/20'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {className}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-150 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingTest(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-indigo-600/25"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
