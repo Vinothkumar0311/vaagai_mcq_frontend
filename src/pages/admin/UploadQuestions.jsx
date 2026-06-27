@@ -418,7 +418,15 @@ export const UploadQuestions = () => {
             embeddedImgUrl,
           };
         })
-        .filter((r) => r.question !== '' || r.image !== '' || r.embeddedImgUrl);
+        .filter((r) => {
+          // Must have at least a question or an image
+          if (!r.question && !r.image && !r.embeddedImgUrl) return false;
+          // Must have all four options (prevents phantom rows from wrapped text)
+          if (!r.optionA || !r.optionB || !r.optionC || !r.optionD) return false;
+          // Must have a valid correct answer
+          if (!['A', 'B', 'C', 'D'].includes(r.correctAnswer)) return false;
+          return true;
+        });
 
       if (rows.length === 0) { toast.error('No valid questions found in the file.'); return; }
       setPreviewRows(rows);
