@@ -317,6 +317,41 @@ export default function TakeTest() {
                         </div>
                       )}
 
+                      <div className="grid grid-cols-1 gap-2.5 my-3">
+                        {[
+                          { label: 'A', text: q.optionA },
+                          { label: 'B', text: q.optionB },
+                          { label: 'C', text: q.optionC },
+                          { label: 'D', text: q.optionD },
+                        ].map(opt => {
+                          const isOptCorrect = opt.label.toUpperCase() === q.correctAnswer?.toUpperCase();
+                          const isOptSelected = opt.label.toUpperCase() === q.selectedOption?.toUpperCase();
+                          
+                          let optStyle = 'border-slate-200 bg-white text-slate-700';
+                          let badgeStyle = 'bg-slate-50 text-slate-500 border-slate-200';
+                          
+                          if (isOptCorrect) {
+                            optStyle = 'border-emerald-500 bg-emerald-50/40 text-emerald-950';
+                            badgeStyle = 'bg-emerald-500 text-white border-emerald-500';
+                          } else if (isOptSelected) {
+                            optStyle = 'border-rose-500 bg-rose-50/40 text-rose-950';
+                            badgeStyle = 'bg-rose-500 text-white border-rose-500';
+                          }
+                          
+                          return (
+                            <div
+                              key={opt.label}
+                              className={`flex items-start gap-4 p-3 border-2 rounded-2xl text-left transition-all ${optStyle}`}
+                            >
+                              <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border-2 ${badgeStyle}`}>
+                                {opt.label}
+                              </div>
+                              <span className="text-sm font-medium leading-relaxed pt-0.5">{opt.text}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
                       <div className="grid grid-cols-1 gap-2 pt-2 text-xs md:text-sm font-sans">
                         <div
                           className={`p-3 rounded-xl border ${
