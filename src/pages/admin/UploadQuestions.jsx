@@ -395,7 +395,7 @@ export const UploadQuestions = () => {
           const optionB = String(row['Option B'] || row['optionB'] || row['OptionB'] || '').trim();
           const optionC = String(row['Option C'] || row['optionC'] || row['OptionC'] || '').trim();
           const optionD = String(row['Option D'] || row['optionD'] || row['OptionD'] || '').trim();
-          const correctAnswer = String(row['Correct Answer'] || row['correctAnswer'] || row['Answer'] || 'A').trim().toUpperCase();
+          const correctAnswer = String(row['Correct Answer'] || row['correctAnswer'] || row['CorrectAnswer'] || row['Answer'] || row['Correct'] || '').trim().toUpperCase();
           const questionClass = String(row['Class'] || row['class'] || row['Grade'] || row['grade'] || row['Standard'] || row['standard'] || '').trim();
 
           let imageVal = String(row['Image'] || row['image'] || '').trim();
@@ -418,15 +418,22 @@ export const UploadQuestions = () => {
             embeddedImgUrl,
           };
         })
-        .filter((r) => {
-          // Must have at least a question or an image
-          if (!r.question && !r.image && !r.embeddedImgUrl) return false;
-          // Must have all four options (prevents phantom rows from wrapped text)
-          if (!r.optionA || !r.optionB || !r.optionC || !r.optionD) return false;
-          // Must have a valid correct answer
-          if (!['A', 'B', 'C', 'D'].includes(r.correctAnswer)) return false;
-          return true;
-        });
+        .filter((() => {
+          const seenQuestions = new Set();
+          return (r) => {
+            // Must have at least a question or an image
+            if (!r.question && !r.image && !r.embeddedImgUrl) return false;
+            // Must have all four options (prevents phantom rows from wrapped text)
+            if (!r.optionA || !r.optionB || !r.optionC || !r.optionD) return false;
+            // Must have a valid correct answer
+            if (!['A', 'B', 'C', 'D'].includes(r.correctAnswer)) return false;
+            // Deduplicate by question text to prevent same question appearing twice
+            const key = (r.question || r.image || '').trim().toLowerCase();
+            if (seenQuestions.has(key)) return false;
+            seenQuestions.add(key);
+            return true;
+          };
+        })());
 
       if (rows.length === 0) { toast.error('No valid questions found in the file.'); return; }
       setPreviewRows(rows);
