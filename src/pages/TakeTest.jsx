@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { publicApi } from '../services/api';
-import { Award, Clock, User, ArrowRight, ArrowLeft, Send, ShieldAlert, AlertCircle, CheckCircle, BookOpen } from 'lucide-react';
+import { Award, Clock, User, ArrowRight, ArrowLeft, Send, ShieldAlert, AlertCircle, CheckCircle, BookOpen, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const STAGE = { INFO: 'info', NAME: 'name', TEST: 'test', DONE: 'done' };
@@ -125,7 +125,7 @@ export default function TakeTest() {
       const msg = err.response?.data?.error || 'Failed to load test.';
       if (err.response?.status === 400 && err.response?.data?.result) {
         toast.error('You have already completed this test.');
-        setError('You have already completed this test with this session.');
+        setResult(err.response.data.result);
         setStage(STAGE.DONE);
       } else {
         toast.error(msg);
@@ -218,26 +218,27 @@ export default function TakeTest() {
 
   // ── Done ─────────────────────────────────────────────────────────────────
   if (stage === STAGE.DONE) {
+    const showDetails = !!result?.resultsPublished && Array.isArray(result?.detailedAnswers) && result.detailedAnswers.length > 0;
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="bg-white border border-slate-200 rounded-3xl p-10 max-w-md w-full text-center shadow-lg">
+        <div className={`bg-white border border-slate-200 rounded-3xl p-6 md:p-10 ${showDetails ? 'max-w-3xl' : 'max-w-md'} w-full text-center shadow-lg transition-all duration-300`}>
           <div className="w-20 h-20 rounded-3xl bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-6">
             <CheckCircle size={40} className="text-emerald-500" />
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 mb-2">
+          <h1 className="text-3xl font-extrabold text-slate-900 mb-2 font-sans tracking-tight">
             {result?.resultsPublished ? 'Test Completed!' : 'Submitted!'}
           </h1>
-          <p className="text-slate-500 text-sm mb-8">
+          <p className="text-slate-500 text-sm mb-6">
             Thank you, <strong className="text-slate-900">{result?.name || name}</strong>!
           </p>
           {result?.resultsPublished ? (
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 mb-6">
-              <p className="text-slate-400 text-xs uppercase tracking-widest mb-2">Your Score</p>
-              <p className="text-5xl font-black text-slate-900">
+              <p className="text-slate-400 text-xs uppercase tracking-widest mb-2 font-mono font-bold">Your Score</p>
+              <p className="text-5xl font-black text-slate-900 font-sans">
                 {result.score}
-                <span className="text-2xl text-slate-400 font-bold">/{result.total}</span>
+                <span className="text-2xl text-slate-400 font-bold font-sans">/{result.total}</span>
               </p>
-              <p className="text-emerald-600 font-bold mt-2 text-lg">
+              <p className="text-emerald-600 font-bold mt-2 text-lg font-sans">
                 {result.total > 0 ? ((result.score / result.total) * 100).toFixed(1) : 0}%
               </p>
             </div>
@@ -248,7 +249,109 @@ export default function TakeTest() {
               </p>
             </div>
           )}
-          <p className="text-slate-400 text-xs">You may close this window.</p>
+
+          {showDetails && (
+            <div className="text-left mt-8 pt-8 border-t border-slate-200 space-y-6">
+              <h3 className="text-lg font-bold text-slate-900 tracking-tight font-sans">
+                Response Analysis
+              </h3>
+              <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                {result.detailedAnswers.map((q, idx) => {
+                  const isCorrect = q.selectedOption?.toUpperCase() === q.correctAnswer?.toUpperCase();
+                  const optionTexts = {
+                    A: q.optionA,
+                    B: q.optionB,
+                    C: q.optionC,
+                    D: q.optionD
+                  };
+                  return (
+                    <div
+                      key={q.questionId || idx}
+                      className={`border rounded-2xl p-5 md:p-6 space-y-4 ${
+                        isCorrect
+                          ? 'border-emerald-100 bg-emerald-50/15'
+                          : 'border-rose-100 bg-rose-50/15'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-4">
+                        <span className="text-xs font-bold text-slate-400 font-mono">
+                          Question {idx + 1}
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border ${
+                            isCorrect
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                              : 'bg-rose-50 text-rose-700 border-rose-100'
+                          }`}
+                        >
+                          {isCorrect ? (
+                            <>
+                              <CheckCircle size={12} /> Correct
+                            </>
+                          ) : (
+                            <>
+                              <XCircle size={12} /> {q.selectedOption ? 'Incorrect' : 'Unanswered'}
+                            </>
+                          )}
+                        </span>
+                      </div>
+
+                      <h4 className="font-bold text-slate-900 leading-relaxed text-sm md:text-base font-sans">
+                        {q.questionText}
+                      </h4>
+
+                      {q.imageUrl && (
+                        <div className="overflow-hidden rounded-xl border border-slate-100 max-h-[300px] bg-slate-50 flex justify-start">
+                          <img
+                            src={
+                              q.imageUrl.startsWith('http')
+                                ? q.imageUrl
+                                : `${import.meta.env.VITE_API_BASE_URL || 'https://vaagaimcqbackend-production.up.railway.app'}${q.imageUrl}`
+                            }
+                            alt="Diagram"
+                            className="object-contain max-h-[300px] w-auto"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 gap-2 pt-2 text-xs md:text-sm font-sans">
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isCorrect
+                              ? 'bg-emerald-55/40 border-emerald-100/60 text-emerald-800'
+                              : 'bg-rose-55/40 border-rose-100/60 text-rose-800'
+                          }`}
+                        >
+                          <span className="font-bold">Your Response: </span>
+                          {q.selectedOption ? (
+                            <span>
+                              <strong>[{q.selectedOption}]</strong> {optionTexts[q.selectedOption]}
+                            </span>
+                          ) : (
+                            <span className="italic font-normal text-slate-500">No option selected</span>
+                          )}
+                        </div>
+
+                        {!isCorrect && (
+                          <div className="p-3 rounded-xl border bg-emerald-55/40 border-emerald-100/60 text-emerald-800">
+                            <span className="font-bold">Correct Solution: </span>
+                            <span>
+                              <strong>[{q.correctAnswer}]</strong> {optionTexts[q.correctAnswer]}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <p className="text-slate-400 text-xs mt-6">You may close this window.</p>
         </div>
       </div>
     );
