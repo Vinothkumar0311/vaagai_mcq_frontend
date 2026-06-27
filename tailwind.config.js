@@ -31,8 +31,8 @@ export default {
         darkCard: '#111827',
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        outfit: ['Outfit', 'sans-serif'],
+        sans: ['Inter', 'Noto Sans Tamil', 'Noto Sans', 'sans-serif'],
+        outfit: ['Outfit', 'Noto Sans Tamil', 'Noto Sans', 'sans-serif'],
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
